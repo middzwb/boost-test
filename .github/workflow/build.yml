@@ -1,0 +1,20 @@
+name: build
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    # install dependencies
+    - name: boost
+      run: sudo apt-get update && sudo apt-get install -yq libboost-all-dev
+    # build project
+    - name: mkdir
+      env:
+        CC:   gcc-10
+        CXX:  g++-10
+      run: g++ -std=c++17 -O2 -Wall -pthread -o test test.cc -lboost_{system,context-mt,coroutine}
