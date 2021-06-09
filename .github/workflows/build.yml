@@ -17,4 +17,4 @@ jobs:
       env:
         CC:   gcc-10
         CXX:  g++-10
-      run: g++ -std=c++17 -O2 -Wall -pthread -o test test.cc -lboost_{system,context-mt,coroutine}
+      run: g++ -std=c++17 -O2 -Wall -pthread -o test test.cc -lboost_{system,context,coroutine}
