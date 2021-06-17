@@ -3,6 +3,9 @@
 #include <boost/asio.hpp>
 #include <boost/asio/spawn.hpp>
 #include <boost/asio/use_future.hpp>
+#include <thread>
+#include <chrono>
+#include <future>
 
 using boost::system::error_code;
 namespace asio = boost::asio;
@@ -25,7 +28,7 @@ auto async_meaning_of_life(bool success, Token&& token)
     if (success)
         handler(error_code{}, 42);
     else
-        handler(asio::error::operation_aborted, 0);
+        handler(asio::error::operation_aborted, -2);
 
     return result.get ();
 }
@@ -67,17 +70,67 @@ void using_handler() {
         });
 }
 
-int main() {
-    asio::io_service svc;
+template<typename CompletionToken>
+auto async_operate(CompletionToken token) {
+    boost::asio::async_completion<CompletionToken, void(error_code, std::string)> init(token);
+    
+    std::cout << __func__ << " this_thread id=" << std::this_thread::get_id() << std::endl;
+    // asio::async_completion<asio::yield_context, void()> init(token);
 
-    spawn(svc, using_yield_ec);
-    spawn(svc, using_yield_catch);
-    std::thread work([] {
-            using_future();
-            using_handler();
+    // auto op = asio::bind_executor(ex, [](boost::system::error_code ec, std::string s) {
+    //     std::cout << s << std::endl;
+    // });
+    // op(boost::system::error_code(), "aaps");
+    
+    // auto handler = init.completion_handler;
+    // static std::thread tr1([&handler]() {
+    std::thread tr1([handler = init.completion_handler]() {
+        std::cout << "thread tr1 id=" << std::this_thread::get_id() << std::endl;
+        using namespace std::chrono_literals;
+        std::this_thread::sleep_for(3s);
+        auto ex = asio::get_associated_executor(handler);
+        asio::dispatch(ex, [handler, ex]() mutable {
+            handler(boost::system::error_code(), "aaps");
+            std::cout << "handler this_thread id=" << std::this_thread::get_id() << std::endl;
         });
+    });
+    tr1.detach();
 
-    svc.run();
-    work.join();
+    return init.result.get();
+}
+
+void async_op(asio::yield_context yield) {
+    using namespace std::chrono;
+    auto start = system_clock::now();
+    boost::system::error_code ec;
+    auto s = async_operate(yield[ec]);
+    auto delta = system_clock::now() - start;
+    std::cout << s << " elapsed " << duration_cast<milliseconds>(delta).count() <<  std::endl;
+}
+
+
+int main() {
+    // asio::io_service svc;
+
+    // spawn(svc, using_yield_ec);
+    // spawn(svc, using_yield_catch);
+    // std::thread work([] {
+    //         using_future();
+    //         using_handler();
+    //     });
+
+    // svc.run();
+    // work.join();
+    using namespace std;
+    asio::io_context ioc;
+    spawn(ioc, async_op);
+    using Executor = asio::io_context::executor_type;
+    asio::executor_work_guard<Executor> work(asio::make_work_guard(ioc));
+    std::thread tr([&ioc]() {
+        ioc.run();
+    });
+    this_thread::sleep_for(5s);
+    work.reset();
+    tr.join();
 }
 
