@@ -90,7 +90,8 @@ auto async_operate(CompletionToken token) {
         std::this_thread::sleep_for(3s);
         auto ex = asio::get_associated_executor(handler);
         asio::dispatch(ex, [handler, ex]() mutable {
-            handler(boost::system::error_code(), "aaps");
+            std::string s("aaps");
+            handler(boost::system::error_code(), s);
             std::cout << "handler this_thread id=" << std::this_thread::get_id() << std::endl;
         });
     });
