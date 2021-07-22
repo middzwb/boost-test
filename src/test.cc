@@ -6,6 +6,7 @@
 #include <thread>
 #include <chrono>
 #include <future>
+#include <atomic>
 #include <random>
 
 using boost::system::error_code;
@@ -13,7 +14,7 @@ namespace asio = boost::asio;
 
 
 template<typename CompletionToken>
-auto async_operate(CompletionToken token) {
+auto async_operate(CompletionToken&& token) {
     asio::async_completion<CompletionToken, void(error_code, std::string)> init(token);
     
     std::cout << __func__ << " thread id=" << std::this_thread::get_id() << std::endl;
@@ -30,7 +31,7 @@ auto async_operate(CompletionToken token) {
         std::mt19937 mt{std::random_device{}()};
         std::this_thread::sleep_for(3s);
         auto ex = asio::get_associated_executor(handler);
-        asio::dispatch(ex, [handler, ex]() mutable {
+        asio::dispatch(ex, [handler]() mutable {
             std::string s("aaps");
             handler(boost::system::error_code(), s);
             std::cout << "handler this_thread id=" << std::this_thread::get_id() << std::endl;
@@ -49,14 +50,21 @@ public:
     using Signature = void(boost::system::error_code);
     std::thread thread_;
     asio::yield_context* yield_;
+    std::atomic_int sem_{0};
     // asio::executor_binder<std::function<Signature>, asio::io_context>* hh;
 
     AsyncTest()
         :work_(asio::make_work_guard(context_))
     {
-        thread_ = std::move(std::thread{[this](){ context_.run(); }});
+        thread_ = std::move(std::thread{[this](){ 
+            std::cout << "context thread_id=" << std::this_thread::get_id() << std::endl;
+            context_.run(); }});
     }
     ~AsyncTest() {
+        while (sem_.load() != 0) {
+            //
+        }
+        work_.reset();
         thread_.join();
     }
 
@@ -77,6 +85,7 @@ public:
         return init.result.get();
     }
     void test_async_op() {
+        sem_.fetch_add(2);
         spawn(context_, [this](asio::yield_context yield) {
             using namespace std::chrono;
             yield_ = &yield;
@@ -85,7 +94,17 @@ public:
             auto s = async_operate(yield[ec]);
             auto delta = system_clock::now() - start;
             std::cout << s << " elapsed " << duration_cast<milliseconds>(delta).count() <<  std::endl;
-            work_.reset();
+            sem_.fetch_sub(1);
+        });
+        spawn(context_, [this](asio::yield_context yield) {
+            using namespace std::chrono;
+            yield_ = &yield;
+            auto start = system_clock::now();
+            boost::system::error_code ec;
+            auto s = async_operate(yield[ec]);
+            auto delta = system_clock::now() - start;
+            std::cout << s << " elapsed " << duration_cast<milliseconds>(delta).count() <<  std::endl;
+            sem_.fetch_sub(1);
         });
     }
 };
