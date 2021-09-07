@@ -29,7 +29,9 @@ auto async_operate(CompletionToken&& token) {
         std::cout << "tr1 thread id=" << std::this_thread::get_id() << std::endl;
         using namespace std::chrono_literals;
         std::mt19937 mt{std::random_device{}()};
-        std::this_thread::sleep_for(3s);
+        std::uniform_int_distribution<int> dist(1, 5);
+        std::chrono::seconds t(dist(mt));
+        std::this_thread::sleep_for(t);
         auto ex = asio::get_associated_executor(handler);
         asio::dispatch(ex, [handler]() mutable {
             std::string s("aaps");
